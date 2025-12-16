@@ -118,26 +118,34 @@
    */
   PhotoReceiver.prototype.setupDataChannel = function(channel) {
     var self = this;
+    console.log('[Receiver] setupDataChannel 호출');
+    console.log('[Receiver] channel.label:', channel.label);
+    console.log('[Receiver] channel.readyState:', channel.readyState);
 
     this.dataChannel = channel;
     this.dataChannel.binaryType = 'arraybuffer';
 
     this.dataChannel.onopen = function() {
-      console.log('Data channel opened');
+      console.log('[Receiver] Data channel opened!');
+      console.log('[Receiver] dataChannel.readyState:', self.dataChannel.readyState);
       self.onStatusChange('connected');
     };
 
     this.dataChannel.onclose = function() {
-      console.log('Data channel closed');
+      console.log('[Receiver] Data channel closed');
       self.onStatusChange('disconnected');
     };
 
     this.dataChannel.onerror = function(error) {
-      console.error('Data channel error:', error);
+      console.error('[Receiver] Data channel error:', error);
       self.onStatusChange('failed');
     };
 
     this.dataChannel.onmessage = function(event) {
+      console.log('[Receiver] onmessage 이벤트 발생, 데이터 타입:', typeof event.data);
+      if (typeof event.data !== 'string') {
+        console.log('[Receiver] 바이너리 데이터 수신, 크기:', event.data.byteLength, 'bytes');
+      }
       self.handleMessage(event.data);
     };
   };
@@ -150,27 +158,33 @@
     if (typeof data === 'string') {
       try {
         var message = JSON.parse(data);
+        console.log('[Receiver] JSON 메시지 수신:', message.type);
 
         if (message.type === 'file-start') {
           // 새 파일 수신 시작
-          console.log('File transfer started:', message.name);
+          console.log('[Receiver] 파일 전송 시작:', message.name, '크기:', message.size, 'bytes', '청크수:', message.totalChunks);
           this.currentFileInfo = message;
           this.receivedChunks = [];
           this.totalReceivedSize = 0;
         } else if (message.type === 'file-end') {
           // 파일 수신 완료
+          console.log('[Receiver] 파일 전송 완료 신호 수신, 청크 개수:', this.receivedChunks.length, '총 크기:', this.totalReceivedSize);
           this.assembleFile();
         } else if (message.type === 'ping') {
           // 연결 유지 핑
+          console.log('[Receiver] ping 수신, pong 응답');
           this.dataChannel.send(JSON.stringify({ type: 'pong' }));
         }
       } catch (e) {
-        console.error('Failed to parse message:', e);
+        console.error('[Receiver] JSON 파싱 실패:', e);
       }
     } else {
       // 바이너리 데이터 (파일 청크)
       this.receivedChunks.push(data);
       this.totalReceivedSize += data.byteLength;
+      if (this.receivedChunks.length % 10 === 0) {
+        console.log('[Receiver] 청크 수신 중...', this.receivedChunks.length, '개,', this.totalReceivedSize, 'bytes');
+      }
     }
   };
 
@@ -178,8 +192,12 @@
    * 수신된 청크들을 파일로 조립
    */
   PhotoReceiver.prototype.assembleFile = function() {
+    console.log('[Receiver] assembleFile 호출');
+    console.log('[Receiver] currentFileInfo:', this.currentFileInfo ? this.currentFileInfo.name : 'null');
+    console.log('[Receiver] receivedChunks.length:', this.receivedChunks.length);
+
     if (!this.currentFileInfo || this.receivedChunks.length === 0) {
-      console.error('No file data to assemble');
+      console.error('[Receiver] 조립할 파일 데이터가 없음');
       return;
     }
 
@@ -189,15 +207,17 @@
         type: this.currentFileInfo.mimeType || 'image/jpeg'
       });
 
-      console.log('File assembled:', this.currentFileInfo.name, '(' + blob.size + ' bytes)');
+      console.log('[Receiver] 파일 조립 완료:', this.currentFileInfo.name, '(' + blob.size + ' bytes)');
 
       // 콜백 호출
+      console.log('[Receiver] onPhotoReceived 콜백 호출...');
       this.onPhotoReceived({
         name: this.currentFileInfo.name,
         type: this.currentFileInfo.mimeType,
         size: blob.size,
         data: blob
       });
+      console.log('[Receiver] onPhotoReceived 콜백 완료');
 
       // 상태 초기화
       this.receivedChunks = [];
@@ -207,9 +227,10 @@
       // 수신 확인 전송
       if (this.dataChannel && this.dataChannel.readyState === 'open') {
         this.dataChannel.send(JSON.stringify({ type: 'file-ack' }));
+        console.log('[Receiver] file-ack 전송 완료');
       }
     } catch (error) {
-      console.error('Failed to assemble file:', error);
+      console.error('[Receiver] 파일 조립 실패:', error);
     }
   };
 

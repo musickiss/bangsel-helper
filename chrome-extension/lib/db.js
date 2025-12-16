@@ -98,9 +98,26 @@
   }
 
   /**
-   * 사진 저장
+   * 사진 저장 (draftId 없이도 가능)
    */
-  async function savePhoto(draftId, photoData) {
+  async function savePhoto(photoDataOrDraftId, photoData) {
+    // 첫 번째 인자가 객체면 draftId 없이 저장
+    if (typeof photoDataOrDraftId === 'object') {
+      photoData = photoDataOrDraftId;
+      const photoId = await db.photos.add({
+        draftId: null,
+        name: photoData.name,
+        type: photoData.type,
+        size: photoData.size,
+        data: photoData.data,
+        thumbnail: photoData.thumbnail,
+        createdAt: photoData.createdAt || Date.now()
+      });
+      return photoId;
+    }
+
+    // draftId가 있는 경우
+    const draftId = photoDataOrDraftId;
     const photoId = await db.photos.add({
       draftId,
       name: photoData.name,

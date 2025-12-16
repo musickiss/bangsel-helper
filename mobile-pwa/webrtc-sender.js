@@ -120,15 +120,21 @@ class PhotoSender {
    * @param {Function} onProgress - 진행률 콜백 (0-100)
    */
   async sendPhoto(file, onProgress) {
+    console.log('[Sender] sendPhoto 호출');
+    console.log('[Sender] dataChannel 존재:', !!this.dataChannel);
+    console.log('[Sender] dataChannel.readyState:', this.dataChannel?.readyState);
+    console.log('[Sender] isConnected:', this.isConnected);
+
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      throw new Error('연결되지 않았습니다');
+      console.error('[Sender] DataChannel이 열려있지 않음!');
+      throw new Error('연결되지 않았습니다 (DataChannel: ' + (this.dataChannel?.readyState || 'null') + ')');
     }
 
     const CHUNK_SIZE = 16384; // 16KB
     const buffer = await file.arrayBuffer();
     const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
 
-    console.log(`Sending file: ${file.name} (${file.size} bytes, ${totalChunks} chunks)`);
+    console.log(`[Sender] 파일 전송 시작: ${file.name} (${file.size} bytes, ${totalChunks} chunks)`);
 
     // 파일 시작 알림
     this.dataChannel.send(JSON.stringify({

@@ -232,7 +232,54 @@
     console.log('[Popup] onPhotoReceived:', photo.name, photo.size, 'bytes');
     this.receivedPhotos.push(photo);
     this.updatePhotoCount();
-    // TODO: 사진을 그리드에 표시하고 IndexedDB에 저장
+    this.displayPhoto(photo);
+    // IndexedDB에 저장 (옵션)
+    this.savePhotoToDB(photo);
+  };
+
+  /**
+   * 사진을 그리드에 표시
+   */
+  PopupApp.prototype.displayPhoto = function(photo) {
+    var grid = this.elements.photosGrid;
+    var photoUrl = URL.createObjectURL(photo.data);
+
+    var item = document.createElement('div');
+    item.className = 'photo-item';
+    item.innerHTML =
+      '<img src="' + photoUrl + '" alt="' + this.escapeHtml(photo.name) + '">' +
+      '<div class="photo-name">' + this.escapeHtml(photo.name) + '</div>';
+
+    // 이미지 클릭 시 다운로드
+    item.querySelector('img').addEventListener('click', function() {
+      var a = document.createElement('a');
+      a.href = photoUrl;
+      a.download = photo.name;
+      a.click();
+    });
+
+    grid.appendChild(item);
+    console.log('[Popup] 사진 그리드에 추가됨:', photo.name);
+  };
+
+  /**
+   * 사진을 IndexedDB에 저장
+   */
+  PopupApp.prototype.savePhotoToDB = async function(photo) {
+    try {
+      if (window.BangselDB) {
+        await window.BangselDB.savePhoto({
+          name: photo.name,
+          type: photo.type,
+          size: photo.size,
+          data: photo.data,
+          createdAt: Date.now()
+        });
+        console.log('[Popup] 사진 DB 저장 완료:', photo.name);
+      }
+    } catch (error) {
+      console.error('[Popup] 사진 DB 저장 실패:', error);
+    }
   };
 
   /**
