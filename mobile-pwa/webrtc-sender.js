@@ -183,40 +183,56 @@ class PhotoSender {
    * 시그널링 데이터 전송
    */
   async sendToSignaling(type, data) {
+    console.log('[Sender] sendToSignaling 호출:', type);
     const signalingRef = firebase.database().ref(`rooms/${this.roomId}/sender`);
-    await signalingRef.push({
-      type,
-      data,
-      timestamp: firebase.database.ServerValue.TIMESTAMP
-    });
+    try {
+      await signalingRef.push({
+        type,
+        data,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+      });
+      console.log('[Sender] 시그널 전송 성공:', type);
+    } catch (error) {
+      console.error('[Sender] 시그널 전송 실패:', error);
+      throw error;
+    }
   }
 
   /**
    * 시그널링 리스너
    */
   listenToSignaling() {
+    console.log('[Sender] listenToSignaling 시작, receiver 경로 리스닝...');
     return new Promise((resolve, reject) => {
       const receiverRef = firebase.database().ref(`rooms/${this.roomId}/receiver`);
+      console.log('[Sender] 리스닝 경로:', `rooms/${this.roomId}/receiver`);
+
       const timeout = setTimeout(() => {
+        console.error('[Sender] 30초 타임아웃! PC로부터 응답 없음');
         receiverRef.off();
-        reject(new Error('연결 시간 초과'));
+        reject(new Error('연결 시간 초과 - PC가 응답하지 않습니다. PC 확장프로그램이 열려있는지 확인하세요.'));
       }, 30000);
 
       receiverRef.on('child_added', async (snapshot) => {
         const message = snapshot.val();
+        console.log('[Sender] receiver로부터 메시지 수신:', message.type);
 
         try {
           if (message.type === 'answer') {
+            console.log('[Sender] Answer 수신, setRemoteDescription 호출');
             await this.pc.setRemoteDescription(new RTCSessionDescription(message.data));
+            console.log('[Sender] setRemoteDescription 성공');
             clearTimeout(timeout);
             resolve();
           } else if (message.type === 'ice-candidate') {
+            console.log('[Sender] ICE candidate 수신');
             if (message.data && this.pc.remoteDescription) {
               await this.pc.addIceCandidate(new RTCIceCandidate(message.data));
+              console.log('[Sender] ICE candidate 추가 성공');
             }
           }
         } catch (error) {
-          console.error('Failed to handle signal:', error);
+          console.error('[Sender] 시그널 처리 실패:', error);
         }
       });
     });

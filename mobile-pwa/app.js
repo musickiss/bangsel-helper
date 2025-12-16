@@ -76,9 +76,20 @@ class MobileApp {
    * Firebase 초기화
    */
   initFirebase() {
+    console.log('[Mobile] Firebase 초기화 시작...');
+    console.log('[Mobile] databaseURL:', firebaseConfig.databaseURL);
+
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
+      console.log('[Mobile] Firebase 앱 초기화 완료');
+    } else {
+      console.log('[Mobile] Firebase 이미 초기화됨');
     }
+
+    // Firebase 연결 상태 모니터링
+    firebase.database().ref('.info/connected').on('value', (snapshot) => {
+      console.log('[Mobile] Firebase 연결 상태:', snapshot.val() ? '연결됨' : '연결 안됨');
+    });
   }
 
   /**
@@ -206,6 +217,7 @@ class MobileApp {
    */
   async connectWithCode() {
     const roomId = this.elements.roomCodeInput.value.trim().toUpperCase();
+    console.log('[Mobile] connectWithCode 시작, roomId:', roomId);
 
     if (!this.isValidRoomId(roomId)) {
       alert('올바른 연결 코드를 입력해주세요.\n(예: ABC-123)');
@@ -220,22 +232,30 @@ class MobileApp {
       this.elements.connectBtn.textContent = '연결 중...';
 
       // 방 존재 여부 확인
+      console.log('[Mobile] Firebase에서 방 확인 중...');
       const roomRef = firebase.database().ref(`rooms/${roomId}`);
       const snapshot = await roomRef.once('value');
+
+      console.log('[Mobile] 방 조회 결과:', snapshot.exists() ? '존재함' : '없음');
+      if (snapshot.exists()) {
+        console.log('[Mobile] 방 데이터:', JSON.stringify(snapshot.val()));
+      }
 
       if (!snapshot.exists()) {
         throw new Error('존재하지 않는 연결 코드입니다.');
       }
 
       // WebRTC 연결
+      console.log('[Mobile] WebRTC 연결 시작...');
       this.sender = new PhotoSender(roomId, (status) => this.onConnectionStatusChange(status));
       await this.sender.connect();
 
+      console.log('[Mobile] WebRTC 연결 성공!');
       // 연결 성공 → 전송 화면으로 전환
       this.showSection('transfer');
 
     } catch (error) {
-      console.error('Connection failed:', error);
+      console.error('[Mobile] Connection failed:', error);
       alert(error.message || '연결에 실패했습니다.');
     } finally {
       this.isConnecting = false;

@@ -47,6 +47,7 @@
     this.roomId = null;
     this.receivedPhotos = [];
     this.firebaseInitialized = false;
+    this.receiver = null; // WebRTC 수신자
 
     this.elements = {
       waitingSection: document.getElementById('waiting-section'),
@@ -139,6 +140,13 @@
     console.log('[Popup] createNewSession 시작');
     console.log('[Popup] firebaseInitialized:', this.firebaseInitialized);
 
+    // 이전 수신자 정리
+    if (this.receiver) {
+      console.log('[Popup] 이전 receiver 정리');
+      this.receiver.disconnect();
+      this.receiver = null;
+    }
+
     // 이전 방이 있으면 삭제
     if (this.roomId && this.firebaseInitialized) {
       console.log('[Popup] 이전 방 삭제 시도:', this.roomId);
@@ -155,12 +163,17 @@
     console.log('[Popup] 새 Room ID 생성됨:', this.roomId);
     this.elements.roomCodeSpan.textContent = this.roomId;
 
-    // Firebase에 방 생성
+    // Firebase에 방 생성 및 WebRTC 수신자 초기화
     if (this.firebaseInitialized) {
       console.log('[Popup] Firebase에 방 생성 시도...');
       try {
         var result = await window.BangselFirebase.createRoom(this.roomId);
         console.log('[Popup] Firebase 방 생성 성공!', result);
+
+        // WebRTC 수신자 초기화
+        console.log('[Popup] PhotoReceiver 초기화 시작...');
+        this.initReceiver();
+
       } catch (error) {
         console.error('[Popup] Firebase 방 생성 실패!');
         console.error('[Popup] Error:', error);
@@ -178,6 +191,70 @@
     this.generateQRCode();
     this.showWaitingSection();
     console.log('[Popup] createNewSession 완료');
+  };
+
+  /**
+   * WebRTC 수신자 초기화
+   */
+  PopupApp.prototype.initReceiver = function() {
+    var self = this;
+
+    if (!window.PhotoReceiver) {
+      console.error('[Popup] PhotoReceiver 클래스가 로드되지 않았습니다.');
+      return;
+    }
+
+    console.log('[Popup] PhotoReceiver 생성, roomId:', this.roomId);
+
+    this.receiver = new window.PhotoReceiver(
+      this.roomId,
+      // 사진 수신 콜백
+      function(photo) {
+        console.log('[Popup] 사진 수신됨:', photo.name);
+        self.onPhotoReceived(photo);
+      },
+      // 연결 상태 변경 콜백
+      function(status) {
+        console.log('[Popup] 연결 상태 변경:', status);
+        self.onConnectionStatusChange(status);
+      }
+    );
+
+    // 수신자는 방 생성 후 대기 상태로 두고, WebRTC 연결 대기
+    console.log('[Popup] PhotoReceiver 리스닝 시작...');
+    this.receiver.startListening();
+  };
+
+  /**
+   * 사진 수신 처리
+   */
+  PopupApp.prototype.onPhotoReceived = function(photo) {
+    console.log('[Popup] onPhotoReceived:', photo.name, photo.size, 'bytes');
+    this.receivedPhotos.push(photo);
+    this.updatePhotoCount();
+    // TODO: 사진을 그리드에 표시하고 IndexedDB에 저장
+  };
+
+  /**
+   * 연결 상태 변경 처리
+   */
+  PopupApp.prototype.onConnectionStatusChange = function(status) {
+    console.log('[Popup] onConnectionStatusChange:', status);
+
+    if (status === 'connected') {
+      console.log('[Popup] 모바일 연결됨!');
+      this.showConnectedSection();
+    } else if (status === 'disconnected' || status === 'failed') {
+      console.log('[Popup] 연결 해제됨');
+      // 연결 해제 시 대기 상태로 복귀하지 않고 현재 상태 유지
+    }
+  };
+
+  /**
+   * 사진 개수 업데이트
+   */
+  PopupApp.prototype.updatePhotoCount = function() {
+    this.elements.photoCount.textContent = '수신된 사진: ' + this.receivedPhotos.length + '장';
   };
 
   PopupApp.prototype.generateQRCode = function() {

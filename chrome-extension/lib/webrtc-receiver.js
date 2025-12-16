@@ -35,7 +35,7 @@
   }
 
   /**
-   * 수신자 초기화
+   * 수신자 초기화 (방 생성 포함 - 독립 사용 시)
    */
   PhotoReceiver.prototype.initialize = async function() {
     var self = this;
@@ -50,19 +50,40 @@
       // 방 생성
       await window.BangselFirebase.createRoom(this.roomId);
 
+      // 리스닝 시작
+      await this.startListening();
+
+      console.log('[Receiver] initialized with room:', this.roomId);
+    } catch (error) {
+      console.error('[Receiver] initialization failed:', error);
+      this.onStatusChange('failed');
+      throw error;
+    }
+  };
+
+  /**
+   * 시그널링 리스닝 시작 (방이 이미 생성된 경우)
+   */
+  PhotoReceiver.prototype.startListening = function() {
+    var self = this;
+    console.log('[Receiver] startListening 호출, roomId:', this.roomId);
+
+    try {
       // RTCPeerConnection 설정
       this.pc = new RTCPeerConnection(ICE_SERVERS);
+      console.log('[Receiver] RTCPeerConnection 생성됨');
 
       // ICE candidate 처리
       this.pc.onicecandidate = function(event) {
         if (event.candidate) {
+          console.log('[Receiver] ICE candidate 생성됨, 전송 중...');
           self.sendToSignaling('ice-candidate', event.candidate.toJSON());
         }
       };
 
       // 연결 상태 변화 감지
       this.pc.onconnectionstatechange = function() {
-        console.log('Connection state:', self.pc.connectionState);
+        console.log('[Receiver] Connection state:', self.pc.connectionState);
         self.onStatusChange(self.pc.connectionState);
 
         if (self.pc.connectionState === 'failed') {
@@ -72,21 +93,21 @@
 
       // ICE 연결 상태 변화
       this.pc.oniceconnectionstatechange = function() {
-        console.log('ICE connection state:', self.pc.iceConnectionState);
+        console.log('[Receiver] ICE connection state:', self.pc.iceConnectionState);
       };
 
       // 데이터 채널 수신 대기 (송신측에서 생성)
       this.pc.ondatachannel = function(event) {
-        console.log('Data channel received');
+        console.log('[Receiver] Data channel received');
         self.setupDataChannel(event.channel);
       };
 
       // 시그널링 리스너 시작
       this.listenToSignaling();
+      console.log('[Receiver] 시그널링 리스너 시작됨, sender 경로 대기 중...');
 
-      console.log('Receiver initialized with room:', this.roomId);
     } catch (error) {
-      console.error('Receiver initialization failed:', error);
+      console.error('[Receiver] startListening 실패:', error);
       this.onStatusChange('failed');
       throw error;
     }
@@ -208,19 +229,23 @@
    */
   PhotoReceiver.prototype.listenToSignaling = function() {
     var self = this;
+    console.log('[Receiver] listenToSignaling 호출, 경로: rooms/' + this.roomId + '/sender');
 
     this.unsubscribeSignaling = window.BangselFirebase.listenToSignals(
       this.roomId,
       'sender',
       async function(message) {
+        console.log('[Receiver] sender로부터 메시지 수신:', message.type);
         try {
           if (message.type === 'offer') {
+            console.log('[Receiver] Offer 수신, 처리 시작...');
             await self.handleOffer(message.data);
           } else if (message.type === 'ice-candidate') {
+            console.log('[Receiver] ICE candidate 수신');
             await self.handleIceCandidate(message.data);
           }
         } catch (error) {
-          console.error('Failed to handle signal:', error);
+          console.error('[Receiver] 시그널 처리 실패:', error);
         }
       }
     );
@@ -230,18 +255,26 @@
    * Offer 처리
    */
   PhotoReceiver.prototype.handleOffer = async function(offer) {
-    console.log('Received offer');
+    console.log('[Receiver] handleOffer 시작');
 
     try {
+      console.log('[Receiver] setRemoteDescription 호출...');
       await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log('[Receiver] setRemoteDescription 완료');
 
+      console.log('[Receiver] createAnswer 호출...');
       var answer = await this.pc.createAnswer();
-      await this.pc.setLocalDescription(answer);
+      console.log('[Receiver] createAnswer 완료');
 
+      console.log('[Receiver] setLocalDescription 호출...');
+      await this.pc.setLocalDescription(answer);
+      console.log('[Receiver] setLocalDescription 완료');
+
+      console.log('[Receiver] Answer 시그널 전송...');
       await this.sendToSignaling('answer', answer);
-      console.log('Answer sent');
+      console.log('[Receiver] Answer 전송 완료!');
     } catch (error) {
-      console.error('Failed to handle offer:', error);
+      console.error('[Receiver] handleOffer 실패:', error);
       throw error;
     }
   };
