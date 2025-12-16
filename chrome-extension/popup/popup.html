@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>방셀 헬퍼</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-container">
+        <img src="../assets/icons/icon-48.png" alt="방셀 헬퍼" class="logo">
+        <h1>방셀 헬퍼</h1>
+      </div>
+    </header>
+
+    <!-- 연결 대기 상태 -->
+    <section id="waiting-section" class="section">
+      <p class="description">모바일에서 QR코드를 스캔하세요</p>
+      <div id="qrcode" class="qr-container"></div>
+      <p class="room-code">연결 코드: <span id="room-code">---</span></p>
+      <button id="new-code-btn" class="btn btn-secondary">새 코드 생성</button>
+    </section>
+
+    <!-- 연결됨 상태 -->
+    <section id="connected-section" class="section hidden">
+      <div class="status-badge connected">
+        <span class="status-dot"></span>
+        모바일 연결됨
+      </div>
+
+      <div class="photos-grid" id="photos-grid">
+        <!-- 수신된 사진들 표시 -->
+      </div>
+
+      <p id="photo-count" class="photo-count">수신된 사진: 0장</p>
+
+      <button id="disconnect-btn" class="btn btn-danger">연결 해제</button>
+    </section>
+
+    <!-- 저장된 초안 목록 -->
+    <section id="drafts-section" class="section">
+      <h2>저장된 방셀 초안</h2>
+      <div id="drafts-list" class="drafts-list">
+        <p class="empty-message">저장된 초안이 없습니다</p>
+      </div>
+    </section>
+
+    <footer>
+      <a href="#" id="settings-link">설정</a>
+      <span class="separator">|</span>
+      <a href="#" id="help-link">도움말</a>
+    </footer>
+  </div>
+
+  <script src="../lib-vendor/qrcode.min.js"></script>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

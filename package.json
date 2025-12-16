@@ -1,0 +1,34 @@
+{
+  "name": "bangsel-helper",
+  "version": "1.0.0",
+  "description": "SOOP 방셀 작성 도우미 - 사진 전송 & 자동 저장 크롬 확장프로그램",
+  "author": "Bangsel Helper Team",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev:pwa": "npx serve mobile-pwa -p 3000",
+    "build:extension": "node scripts/build-extension.js",
+    "lint": "eslint chrome-extension mobile-pwa --ext .js",
+    "test": "echo \"테스트 실행\""
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "serve": "^14.2.0",
+    "sharp": "^0.34.5",
+    "web-ext": "^7.11.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/bangsel-helper.git"
+  },
+  "keywords": [
+    "chrome-extension",
+    "soop",
+    "afreecatv",
+    "webrtc",
+    "pwa"
+  ]
+}

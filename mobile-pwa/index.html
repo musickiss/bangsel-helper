@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#667eea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="SOOP 방셀 헬퍼 - 모바일에서 PC로 사진을 쉽게 전송하세요">
+
+  <title>방셀 헬퍼</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 연결 전 화면 -->
+    <section id="connect-section" class="section">
+      <div class="header">
+        <div class="logo">📱</div>
+        <h1>방셀 헬퍼</h1>
+        <p class="subtitle">모바일 → PC 사진 전송</p>
+      </div>
+
+      <div class="connect-options">
+        <button id="scan-qr-btn" class="btn btn-primary btn-large">
+          <span class="btn-icon">📷</span>
+          <span class="btn-text">QR코드 스캔</span>
+        </button>
+
+        <div class="divider">
+          <span>또는</span>
+        </div>
+
+        <div class="code-input-group">
+          <input
+            type="text"
+            id="room-code-input"
+            placeholder="연결 코드 입력 (예: ABC-123)"
+            maxlength="7"
+            autocomplete="off"
+            autocapitalize="characters"
+          >
+          <button id="connect-btn" class="btn btn-secondary">연결</button>
+        </div>
+      </div>
+
+      <div class="instructions">
+        <h3>사용 방법</h3>
+        <ol>
+          <li>PC에서 크롬 확장프로그램 열기</li>
+          <li>표시된 QR코드 스캔 또는 코드 입력</li>
+          <li>사진 촬영 또는 갤러리에서 선택</li>
+          <li>PC로 전송</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- QR 스캐너 화면 -->
+    <section id="scanner-section" class="section hidden">
+      <div class="scanner-container">
+        <video id="scanner-video" autoplay playsinline></video>
+        <div class="scanner-overlay">
+          <div class="scanner-frame"></div>
+        </div>
+        <p class="scanner-hint">QR코드를 프레임 안에 맞춰주세요</p>
+      </div>
+      <button id="close-scanner-btn" class="btn btn-close">✕</button>
+    </section>
+
+    <!-- 연결됨 화면 -->
+    <section id="transfer-section" class="section hidden">
+      <div class="status-bar">
+        <div class="status-badge connected">
+          <span class="status-dot"></span>
+          <span>PC와 연결됨</span>
+        </div>
+        <button id="disconnect-btn" class="btn-text">연결 해제</button>
+      </div>
+
+      <div class="photo-actions">
+        <button id="camera-btn" class="btn-action">
+          <span class="action-icon">📷</span>
+          <span class="action-text">사진 촬영</span>
+        </button>
+        <button id="gallery-btn" class="btn-action">
+          <span class="action-icon">🖼️</span>
+          <span class="action-text">갤러리에서 선택</span>
+        </button>
+      </div>
+
+      <!-- 숨겨진 파일 입력 -->
+      <input type="file" id="file-input" accept="image/*" multiple hidden>
+      <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
+
+      <!-- 선택된 사진 미리보기 -->
+      <div id="selected-photos" class="photo-grid hidden">
+        <div class="photo-grid-header">
+          <span>선택된 사진</span>
+          <button id="clear-photos-btn" class="btn-text-small">모두 삭제</button>
+        </div>
+        <div id="photo-preview-list" class="photo-preview-list"></div>
+      </div>
+
+      <!-- 전송 진행률 -->
+      <div id="progress-container" class="progress-container hidden">
+        <div class="progress-info">
+          <span id="progress-text">전송 준비 중...</span>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- 전송 버튼 -->
+      <button id="send-btn" class="btn btn-primary btn-large hidden">
+        <span class="btn-icon">🚀</span>
+        <span class="btn-text">PC로 전송하기</span>
+      </button>
+
+      <!-- 전송 완료 메시지 -->
+      <div id="success-message" class="success-message hidden">
+        <span class="success-icon">✅</span>
+        <span>전송 완료!</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+
+  <!-- App Scripts -->
+  <script src="webrtc-sender.js"></script>
+  <script src="camera.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

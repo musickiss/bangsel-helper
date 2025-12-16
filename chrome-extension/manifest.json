@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "방셀 헬퍼",
+  "version": "1.0.0",
+  "description": "SOOP 방셀 작성 도우미 - 사진 전송 & 자동 저장",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.sooplive.co.kr/*",
+    "https://ch.sooplive.co.kr/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.sooplive.co.kr/*",
+        "https://ch.sooplive.co.kr/*"
+      ],
+      "js": ["lib-vendor/dexie.min.js", "lib/db.js", "content/soop-content.js"],
+      "css": ["content/soop-content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["https://www.sooplive.co.kr/*", "https://ch.sooplive.co.kr/*"]
+    }
+  ]
+}

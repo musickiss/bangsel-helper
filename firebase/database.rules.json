@@ -1,0 +1,58 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".indexOn": ["createdAt"],
+
+        ".read": true,
+        ".write": true,
+
+        ".validate": "newData.hasChildren(['createdAt']) || newData.hasChildren(['sender']) || newData.hasChildren(['receiver'])",
+
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(waiting|connected|closed)$/)"
+        },
+
+        "sender": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['type', 'timestamp'])",
+
+            "type": {
+              ".validate": "newData.isString() && newData.val().matches(/^(offer|ice-candidate)$/)"
+            },
+
+            "data": {
+              ".validate": "newData.val() != null"
+            },
+
+            "timestamp": {
+              ".validate": "newData.isNumber()"
+            }
+          }
+        },
+
+        "receiver": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['type', 'timestamp'])",
+
+            "type": {
+              ".validate": "newData.isString() && newData.val().matches(/^(answer|ice-candidate)$/)"
+            },
+
+            "data": {
+              ".validate": "newData.val() != null"
+            },
+
+            "timestamp": {
+              ".validate": "newData.isNumber()"
+            }
+          }
+        }
+      }
+    }
+  }
+}
