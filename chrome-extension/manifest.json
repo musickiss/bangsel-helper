@@ -6,15 +6,15 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.sooplive.co.kr/*",
     "https://ch.sooplive.co.kr/*"
   ],
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
   "action": {
     "default_popup": "popup/popup.html",
