@@ -3,7 +3,7 @@
  */
 
 // PWA URL (GitHub Pages 배포 시 변경 필요)
-const PWA_BASE_URL = 'https://yourusername.github.io/bangsel-helper';
+const PWA_BASE_URL = 'https://musickiss.github.io/bangsel-helper';
 
 /**
  * 랜덤 Room ID 생성 (예: ABC-123)
