@@ -3,34 +3,23 @@
  * 모바일로부터 사진을 수신하는 역할
  */
 
-import {
-  initializeFirebase,
-  createRoom,
-  sendSignal,
-  listenToSignals,
-  deleteRoom
-} from './firebase-config.js';
+(function() {
+  'use strict';
 
-// ICE 서버 설정 (STUN 서버 - 무료)
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' }
-  ]
-};
+  // ICE 서버 설정 (STUN 서버 - 무료)
+  var ICE_SERVERS = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' }
+    ]
+  };
 
-/**
- * 사진 수신자 클래스
- */
-export class PhotoReceiver {
   /**
-   * @param {string} roomId - 방 ID
-   * @param {Function} onPhotoReceived - 사진 수신 시 콜백
-   * @param {Function} onStatusChange - 연결 상태 변경 시 콜백
+   * 사진 수신자 클래스
    */
-  constructor(roomId, onPhotoReceived, onStatusChange) {
+  function PhotoReceiver(roomId, onPhotoReceived, onStatusChange) {
     this.roomId = roomId;
     this.onPhotoReceived = onPhotoReceived;
     this.onStatusChange = onStatusChange;
@@ -48,91 +37,98 @@ export class PhotoReceiver {
   /**
    * 수신자 초기화
    */
-  async initialize() {
+  PhotoReceiver.prototype.initialize = async function() {
+    var self = this;
+
     try {
       // Firebase 초기화
-      initializeFirebase();
+      if (!window.BangselFirebase) {
+        throw new Error('Firebase 모듈이 로드되지 않았습니다.');
+      }
+      window.BangselFirebase.initializeFirebase();
 
       // 방 생성
-      await createRoom(this.roomId);
+      await window.BangselFirebase.createRoom(this.roomId);
 
       // RTCPeerConnection 설정
       this.pc = new RTCPeerConnection(ICE_SERVERS);
 
       // ICE candidate 처리
-      this.pc.onicecandidate = (event) => {
+      this.pc.onicecandidate = function(event) {
         if (event.candidate) {
-          this.sendToSignaling('ice-candidate', event.candidate.toJSON());
+          self.sendToSignaling('ice-candidate', event.candidate.toJSON());
         }
       };
 
       // 연결 상태 변화 감지
-      this.pc.onconnectionstatechange = () => {
-        console.log('Connection state:', this.pc.connectionState);
-        this.onStatusChange(this.pc.connectionState);
+      this.pc.onconnectionstatechange = function() {
+        console.log('Connection state:', self.pc.connectionState);
+        self.onStatusChange(self.pc.connectionState);
 
-        if (this.pc.connectionState === 'failed') {
-          this.handleConnectionFailure();
+        if (self.pc.connectionState === 'failed') {
+          self.handleConnectionFailure();
         }
       };
 
       // ICE 연결 상태 변화
-      this.pc.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', this.pc.iceConnectionState);
+      this.pc.oniceconnectionstatechange = function() {
+        console.log('ICE connection state:', self.pc.iceConnectionState);
       };
 
       // 데이터 채널 수신 대기 (송신측에서 생성)
-      this.pc.ondatachannel = (event) => {
+      this.pc.ondatachannel = function(event) {
         console.log('Data channel received');
-        this.setupDataChannel(event.channel);
+        self.setupDataChannel(event.channel);
       };
 
       // 시그널링 리스너 시작
       this.listenToSignaling();
 
-      console.log(`Receiver initialized with room: ${this.roomId}`);
+      console.log('Receiver initialized with room:', this.roomId);
     } catch (error) {
       console.error('Receiver initialization failed:', error);
       this.onStatusChange('failed');
       throw error;
     }
-  }
+  };
 
   /**
    * 데이터 채널 설정
    */
-  setupDataChannel(channel) {
+  PhotoReceiver.prototype.setupDataChannel = function(channel) {
+    var self = this;
+
     this.dataChannel = channel;
     this.dataChannel.binaryType = 'arraybuffer';
 
-    this.dataChannel.onopen = () => {
+    this.dataChannel.onopen = function() {
       console.log('Data channel opened');
-      this.onStatusChange('connected');
+      self.onStatusChange('connected');
     };
 
-    this.dataChannel.onclose = () => {
+    this.dataChannel.onclose = function() {
       console.log('Data channel closed');
-      this.onStatusChange('disconnected');
+      self.onStatusChange('disconnected');
     };
 
-    this.dataChannel.onerror = (error) => {
+    this.dataChannel.onerror = function(error) {
       console.error('Data channel error:', error);
-      this.onStatusChange('failed');
+      self.onStatusChange('failed');
     };
 
-    this.dataChannel.onmessage = (event) => {
-      this.handleMessage(event.data);
+    this.dataChannel.onmessage = function(event) {
+      self.handleMessage(event.data);
     };
-  }
+  };
 
   /**
    * 수신된 메시지 처리
    */
-  handleMessage(data) {
+  PhotoReceiver.prototype.handleMessage = function(data) {
     // JSON 메시지 (파일 정보)
     if (typeof data === 'string') {
       try {
-        const message = JSON.parse(data);
+        var message = JSON.parse(data);
 
         if (message.type === 'file-start') {
           // 새 파일 수신 시작
@@ -154,19 +150,13 @@ export class PhotoReceiver {
       // 바이너리 데이터 (파일 청크)
       this.receivedChunks.push(data);
       this.totalReceivedSize += data.byteLength;
-
-      // 진행률 계산 (선택적으로 표시)
-      if (this.currentFileInfo) {
-        const progress = (this.totalReceivedSize / this.currentFileInfo.size) * 100;
-        // console.log(`Receiving: ${progress.toFixed(1)}%`);
-      }
     }
-  }
+  };
 
   /**
    * 수신된 청크들을 파일로 조립
    */
-  assembleFile() {
+  PhotoReceiver.prototype.assembleFile = function() {
     if (!this.currentFileInfo || this.receivedChunks.length === 0) {
       console.error('No file data to assemble');
       return;
@@ -174,11 +164,11 @@ export class PhotoReceiver {
 
     try {
       // Blob 생성
-      const blob = new Blob(this.receivedChunks, {
+      var blob = new Blob(this.receivedChunks, {
         type: this.currentFileInfo.mimeType || 'image/jpeg'
       });
 
-      console.log(`File assembled: ${this.currentFileInfo.name} (${blob.size} bytes)`);
+      console.log('File assembled:', this.currentFileInfo.name, '(' + blob.size + ' bytes)');
 
       // 콜백 호출
       this.onPhotoReceived({
@@ -200,50 +190,52 @@ export class PhotoReceiver {
     } catch (error) {
       console.error('Failed to assemble file:', error);
     }
-  }
+  };
 
   /**
    * 시그널링 데이터 전송
    */
-  async sendToSignaling(type, data) {
+  PhotoReceiver.prototype.sendToSignaling = async function(type, data) {
     try {
-      await sendSignal(this.roomId, 'receiver', { type, data });
+      await window.BangselFirebase.sendSignal(this.roomId, 'receiver', { type: type, data: data });
     } catch (error) {
       console.error('Failed to send signal:', error);
     }
-  }
+  };
 
   /**
    * 시그널링 리스너 시작
    */
-  listenToSignaling() {
-    this.unsubscribeSignaling = listenToSignals(
+  PhotoReceiver.prototype.listenToSignaling = function() {
+    var self = this;
+
+    this.unsubscribeSignaling = window.BangselFirebase.listenToSignals(
       this.roomId,
       'sender',
-      async (message) => {
+      async function(message) {
         try {
           if (message.type === 'offer') {
-            await this.handleOffer(message.data);
+            await self.handleOffer(message.data);
           } else if (message.type === 'ice-candidate') {
-            await this.handleIceCandidate(message.data);
+            await self.handleIceCandidate(message.data);
           }
         } catch (error) {
           console.error('Failed to handle signal:', error);
         }
       }
     );
-  }
+  };
 
   /**
    * Offer 처리
    */
-  async handleOffer(offer) {
+  PhotoReceiver.prototype.handleOffer = async function(offer) {
     console.log('Received offer');
 
     try {
       await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
 
-      const answer = await this.pc.createAnswer();
+      var answer = await this.pc.createAnswer();
       await this.pc.setLocalDescription(answer);
 
       await this.sendToSignaling('answer', answer);
@@ -252,12 +244,12 @@ export class PhotoReceiver {
       console.error('Failed to handle offer:', error);
       throw error;
     }
-  }
+  };
 
   /**
    * ICE Candidate 처리
    */
-  async handleIceCandidate(candidate) {
+  PhotoReceiver.prototype.handleIceCandidate = async function(candidate) {
     try {
       if (candidate && this.pc.remoteDescription) {
         await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
@@ -265,20 +257,20 @@ export class PhotoReceiver {
     } catch (error) {
       console.error('Failed to add ICE candidate:', error);
     }
-  }
+  };
 
   /**
    * 연결 실패 처리
    */
-  handleConnectionFailure() {
+  PhotoReceiver.prototype.handleConnectionFailure = function() {
     console.log('Connection failed, cleaning up...');
     this.disconnect();
-  }
+  };
 
   /**
    * 연결 해제
    */
-  disconnect() {
+  PhotoReceiver.prototype.disconnect = function() {
     console.log('Disconnecting receiver...');
 
     // 시그널링 리스너 해제
@@ -300,7 +292,9 @@ export class PhotoReceiver {
     }
 
     // 방 삭제
-    deleteRoom(this.roomId).catch(console.error);
+    if (window.BangselFirebase) {
+      window.BangselFirebase.deleteRoom(this.roomId).catch(function() {});
+    }
 
     // 상태 초기화
     this.receivedChunks = [];
@@ -308,17 +302,17 @@ export class PhotoReceiver {
     this.totalReceivedSize = 0;
 
     this.onStatusChange('disconnected');
-  }
+  };
 
   /**
    * 현재 연결 상태 확인
    */
-  isConnected() {
+  PhotoReceiver.prototype.isConnected = function() {
     return this.pc && this.pc.connectionState === 'connected';
-  }
-}
+  };
 
-// 전역 변수로 노출
-window.PhotoReceiver = PhotoReceiver;
+  // 전역 변수로 노출
+  window.PhotoReceiver = PhotoReceiver;
 
-export default PhotoReceiver;
+  console.log('[방셀 헬퍼] WebRTC Receiver 모듈 로드 완료');
+})();

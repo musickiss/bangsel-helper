@@ -46,6 +46,7 @@
   function PopupApp() {
     this.roomId = null;
     this.receivedPhotos = [];
+    this.firebaseInitialized = false;
 
     this.elements = {
       waitingSection: document.getElementById('waiting-section'),
@@ -64,16 +65,33 @@
   }
 
   PopupApp.prototype.init = async function() {
+    // Firebase 초기화
+    this.initFirebase();
+
     this.bindEvents();
     await this.loadDrafts();
-    this.createNewSession();
+    await this.createNewSession();
+  };
+
+  PopupApp.prototype.initFirebase = function() {
+    try {
+      if (window.BangselFirebase) {
+        window.BangselFirebase.initializeFirebase();
+        this.firebaseInitialized = true;
+        console.log('Firebase 초기화 완료');
+      } else {
+        console.error('Firebase 모듈이 로드되지 않았습니다.');
+      }
+    } catch (error) {
+      console.error('Firebase 초기화 실패:', error);
+    }
   };
 
   PopupApp.prototype.bindEvents = function() {
     var self = this;
 
-    this.elements.newCodeBtn.addEventListener('click', function() {
-      self.createNewSession();
+    this.elements.newCodeBtn.addEventListener('click', async function() {
+      await self.createNewSession();
     });
 
     this.elements.disconnectBtn.addEventListener('click', function() {
@@ -91,9 +109,38 @@
     });
   };
 
-  PopupApp.prototype.createNewSession = function() {
+  PopupApp.prototype.createNewSession = async function() {
+    var self = this;
+
+    // 이전 방이 있으면 삭제
+    if (this.roomId && this.firebaseInitialized) {
+      try {
+        await window.BangselFirebase.deleteRoom(this.roomId);
+      } catch (e) {
+        // 무시
+      }
+    }
+
+    // 새 Room ID 생성
     this.roomId = generateRoomId();
     this.elements.roomCodeSpan.textContent = this.roomId;
+
+    // Firebase에 방 생성
+    if (this.firebaseInitialized) {
+      try {
+        await window.BangselFirebase.createRoom(this.roomId);
+        console.log('Firebase 방 생성됨:', this.roomId);
+      } catch (error) {
+        console.error('Firebase 방 생성 실패:', error);
+        this.elements.qrcodeContainer.innerHTML =
+          '<div style="text-align: center; padding: 20px; color: #ef4444;">' +
+          '<p>서버 연결 실패</p>' +
+          '<p>인터넷 연결을 확인하세요</p>' +
+          '</div>';
+        return;
+      }
+    }
+
     this.generateQRCode();
     this.showWaitingSection();
   };
@@ -222,10 +269,19 @@
     this.elements.connectedSection.classList.remove('hidden');
   };
 
-  PopupApp.prototype.disconnect = function() {
+  PopupApp.prototype.disconnect = async function() {
+    // Firebase에서 방 삭제
+    if (this.roomId && this.firebaseInitialized) {
+      try {
+        await window.BangselFirebase.deleteRoom(this.roomId);
+      } catch (e) {
+        // 무시
+      }
+    }
+
     this.receivedPhotos = [];
     this.showWaitingSection();
-    this.createNewSession();
+    await this.createNewSession();
   };
 
   // 초기화
