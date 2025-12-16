@@ -26,23 +26,46 @@
    * Firebase 초기화
    */
   function initializeFirebase() {
-    if (firebaseApp) {
+    console.log('[방셀 헬퍼] Firebase 초기화 시작...');
+
+    if (firebaseApp && database) {
+      console.log('[방셀 헬퍼] Firebase 이미 초기화됨');
       return { app: firebaseApp, database: database };
     }
 
-    // Firebase가 이미 로드되었는지 확인
-    if (typeof firebase !== 'undefined') {
-      // Compat 버전 사용 (CDN으로 로드된 경우)
-      if (!firebase.apps.length) {
+    // Firebase SDK 로드 확인
+    if (typeof firebase === 'undefined') {
+      console.error('[방셀 헬퍼] Firebase SDK가 로드되지 않았습니다. typeof firebase:', typeof firebase);
+      throw new Error('Firebase SDK not loaded');
+    }
+
+    console.log('[방셀 헬퍼] Firebase SDK 발견:', firebase.SDK_VERSION || 'version unknown');
+    console.log('[방셀 헬퍼] 사용할 databaseURL:', firebaseConfig.databaseURL);
+
+    try {
+      // Firebase 앱 초기화
+      if (!firebase.apps || firebase.apps.length === 0) {
+        console.log('[방셀 헬퍼] Firebase 앱 초기화 중...');
         firebaseApp = firebase.initializeApp(firebaseConfig);
+        console.log('[방셀 헬퍼] Firebase 앱 초기화 완료');
       } else {
+        console.log('[방셀 헬퍼] 기존 Firebase 앱 사용');
         firebaseApp = firebase.app();
       }
+
+      // Database 초기화
+      if (typeof firebase.database !== 'function') {
+        console.error('[방셀 헬퍼] firebase.database가 함수가 아닙니다. Firebase Database SDK가 로드되지 않았을 수 있습니다.');
+        throw new Error('Firebase Database SDK not loaded');
+      }
+
       database = firebase.database();
-      console.log('[방셀 헬퍼] Firebase 초기화 완료');
-    } else {
-      console.error('[방셀 헬퍼] Firebase SDK가 로드되지 않았습니다.');
-      throw new Error('Firebase SDK not loaded');
+      console.log('[방셀 헬퍼] Firebase Database 초기화 완료');
+      console.log('[방셀 헬퍼] Database 객체:', database ? 'OK' : 'NULL');
+
+    } catch (error) {
+      console.error('[방셀 헬퍼] Firebase 초기화 중 오류:', error);
+      throw error;
     }
 
     return { app: firebaseApp, database: database };
@@ -53,8 +76,15 @@
    */
   function getRef(path) {
     if (!database) {
+      console.log('[방셀 헬퍼] Database가 없어 초기화 시도');
       initializeFirebase();
     }
+
+    if (!database) {
+      console.error('[방셀 헬퍼] Database 초기화 실패');
+      throw new Error('Database not initialized');
+    }
+
     return database.ref(path);
   }
 
@@ -62,31 +92,46 @@
    * 방(Room) 생성
    */
   function createRoom(roomId) {
+    console.log('[방셀 헬퍼] createRoom 호출됨, roomId:', roomId);
+
     return new Promise(function(resolve, reject) {
-      var roomRef = getRef('rooms/' + roomId);
+      try {
+        var roomRef = getRef('rooms/' + roomId);
+        console.log('[방셀 헬퍼] roomRef 생성됨:', roomRef.toString());
 
-      var roomData = {
-        createdAt: firebase.database.ServerValue.TIMESTAMP,
-        status: 'waiting'
-      };
+        var roomData = {
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          status: 'waiting'
+        };
 
-      roomRef.set(roomData)
-        .then(function() {
-          console.log('[방셀 헬퍼] 방 생성됨:', roomId);
+        console.log('[방셀 헬퍼] roomData:', JSON.stringify(roomData));
+        console.log('[방셀 헬퍼] Firebase set() 호출 시작...');
 
-          // 1시간 후 자동 삭제
-          setTimeout(function() {
-            roomRef.remove().catch(function() {
-              // 이미 삭제되었을 수 있음
-            });
-          }, 60 * 60 * 1000);
+        roomRef.set(roomData)
+          .then(function() {
+            console.log('[방셀 헬퍼] Firebase set() 성공! 방 생성됨:', roomId);
 
-          resolve({ roomId: roomId, createdAt: Date.now(), status: 'waiting' });
-        })
-        .catch(function(error) {
-          console.error('[방셀 헬퍼] 방 생성 실패:', error);
-          reject(error);
-        });
+            // 1시간 후 자동 삭제
+            setTimeout(function() {
+              roomRef.remove().catch(function(err) {
+                console.log('[방셀 헬퍼] 자동 삭제 실패 (이미 삭제됨):', err.message);
+              });
+            }, 60 * 60 * 1000);
+
+            resolve({ roomId: roomId, createdAt: Date.now(), status: 'waiting' });
+          })
+          .catch(function(error) {
+            console.error('[방셀 헬퍼] Firebase set() 실패!');
+            console.error('[방셀 헬퍼] Error code:', error.code);
+            console.error('[방셀 헬퍼] Error message:', error.message);
+            console.error('[방셀 헬퍼] Full error:', error);
+            reject(error);
+          });
+
+      } catch (error) {
+        console.error('[방셀 헬퍼] createRoom 예외 발생:', error);
+        reject(error);
+      }
     });
   }
 
@@ -95,15 +140,23 @@
    */
   function sendSignal(roomId, role, data) {
     return new Promise(function(resolve, reject) {
-      var signalRef = getRef('rooms/' + roomId + '/' + role);
+      try {
+        var signalRef = getRef('rooms/' + roomId + '/' + role);
 
-      var signalData = Object.assign({}, data, {
-        timestamp: firebase.database.ServerValue.TIMESTAMP
-      });
+        var signalData = Object.assign({}, data, {
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
 
-      signalRef.push(signalData)
-        .then(resolve)
-        .catch(reject);
+        signalRef.push(signalData)
+          .then(resolve)
+          .catch(function(error) {
+            console.error('[방셀 헬퍼] sendSignal 실패:', error);
+            reject(error);
+          });
+      } catch (error) {
+        console.error('[방셀 헬퍼] sendSignal 예외:', error);
+        reject(error);
+      }
     });
   }
 
@@ -132,11 +185,24 @@
    * 방 삭제 (연결 종료 시)
    */
   function deleteRoom(roomId) {
+    console.log('[방셀 헬퍼] deleteRoom 호출됨, roomId:', roomId);
+
     return new Promise(function(resolve, reject) {
-      var roomRef = getRef('rooms/' + roomId);
-      roomRef.remove()
-        .then(resolve)
-        .catch(reject);
+      try {
+        var roomRef = getRef('rooms/' + roomId);
+        roomRef.remove()
+          .then(function() {
+            console.log('[방셀 헬퍼] 방 삭제 완료:', roomId);
+            resolve();
+          })
+          .catch(function(error) {
+            console.error('[방셀 헬퍼] 방 삭제 실패:', error);
+            reject(error);
+          });
+      } catch (error) {
+        console.error('[방셀 헬퍼] deleteRoom 예외:', error);
+        reject(error);
+      }
     });
   }
 
@@ -145,12 +211,18 @@
    */
   function roomExists(roomId) {
     return new Promise(function(resolve, reject) {
-      var roomRef = getRef('rooms/' + roomId);
-      roomRef.once('value')
-        .then(function(snapshot) {
-          resolve(snapshot.exists());
-        })
-        .catch(reject);
+      try {
+        var roomRef = getRef('rooms/' + roomId);
+        roomRef.once('value')
+          .then(function(snapshot) {
+            var exists = snapshot.exists();
+            console.log('[방셀 헬퍼] roomExists 결과:', roomId, exists);
+            resolve(exists);
+          })
+          .catch(reject);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -161,7 +233,9 @@
     var connectedRef = getRef('.info/connected');
 
     var onValue = function(snapshot) {
-      callback(snapshot.val() === true);
+      var connected = snapshot.val() === true;
+      console.log('[방셀 헬퍼] Firebase 연결 상태:', connected ? '연결됨' : '연결 안됨');
+      callback(connected);
     };
 
     connectedRef.on('value', onValue);
@@ -169,6 +243,33 @@
     return function() {
       connectedRef.off('value', onValue);
     };
+  }
+
+  /**
+   * 테스트용: 간단한 쓰기 테스트
+   */
+  function testWrite() {
+    console.log('[방셀 헬퍼] testWrite 시작...');
+
+    return new Promise(function(resolve, reject) {
+      try {
+        var testRef = getRef('test/' + Date.now());
+        testRef.set({ test: true, timestamp: Date.now() })
+          .then(function() {
+            console.log('[방셀 헬퍼] testWrite 성공!');
+            // 테스트 데이터 즉시 삭제
+            testRef.remove();
+            resolve(true);
+          })
+          .catch(function(error) {
+            console.error('[방셀 헬퍼] testWrite 실패:', error);
+            reject(error);
+          });
+      } catch (error) {
+        console.error('[방셀 헬퍼] testWrite 예외:', error);
+        reject(error);
+      }
+    });
   }
 
   // 전역 변수로 노출
@@ -181,7 +282,8 @@
     listenToSignals: listenToSignals,
     deleteRoom: deleteRoom,
     roomExists: roomExists,
-    monitorConnection: monitorConnection
+    monitorConnection: monitorConnection,
+    testWrite: testWrite
   };
 
   console.log('[방셀 헬퍼] Firebase 모듈 로드 완료');

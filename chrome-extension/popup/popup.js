@@ -65,25 +65,50 @@
   }
 
   PopupApp.prototype.init = async function() {
-    // Firebase 초기화
-    this.initFirebase();
+    console.log('[Popup] init 시작');
+
+    // Firebase 초기화 (async)
+    await this.initFirebase();
 
     this.bindEvents();
     await this.loadDrafts();
     await this.createNewSession();
+
+    console.log('[Popup] init 완료');
   };
 
-  PopupApp.prototype.initFirebase = function() {
+  PopupApp.prototype.initFirebase = async function() {
+    console.log('[Popup] initFirebase 시작');
+    console.log('[Popup] window.BangselFirebase:', window.BangselFirebase ? 'OK' : 'undefined');
+    console.log('[Popup] typeof firebase:', typeof firebase);
+
     try {
-      if (window.BangselFirebase) {
-        window.BangselFirebase.initializeFirebase();
-        this.firebaseInitialized = true;
-        console.log('Firebase 초기화 완료');
-      } else {
-        console.error('Firebase 모듈이 로드되지 않았습니다.');
+      if (!window.BangselFirebase) {
+        console.error('[Popup] BangselFirebase 모듈이 로드되지 않았습니다.');
+        return;
       }
+
+      window.BangselFirebase.initializeFirebase();
+      this.firebaseInitialized = true;
+      console.log('[Popup] Firebase 초기화 완료, firebaseInitialized:', this.firebaseInitialized);
+
+      // Firebase 연결 상태 모니터링
+      window.BangselFirebase.monitorConnection(function(connected) {
+        console.log('[Popup] Firebase 연결 상태 변경:', connected);
+      });
+
+      // 테스트 쓰기 수행
+      console.log('[Popup] Firebase 쓰기 테스트 시작...');
+      try {
+        await window.BangselFirebase.testWrite();
+        console.log('[Popup] Firebase 쓰기 테스트 성공!');
+      } catch (testError) {
+        console.error('[Popup] Firebase 쓰기 테스트 실패:', testError);
+      }
+
     } catch (error) {
-      console.error('Firebase 초기화 실패:', error);
+      console.error('[Popup] Firebase 초기화 실패:', error);
+      this.firebaseInitialized = false;
     }
   };
 
@@ -111,38 +136,48 @@
 
   PopupApp.prototype.createNewSession = async function() {
     var self = this;
+    console.log('[Popup] createNewSession 시작');
+    console.log('[Popup] firebaseInitialized:', this.firebaseInitialized);
 
     // 이전 방이 있으면 삭제
     if (this.roomId && this.firebaseInitialized) {
+      console.log('[Popup] 이전 방 삭제 시도:', this.roomId);
       try {
         await window.BangselFirebase.deleteRoom(this.roomId);
+        console.log('[Popup] 이전 방 삭제 완료');
       } catch (e) {
-        // 무시
+        console.log('[Popup] 이전 방 삭제 실패 (무시):', e.message);
       }
     }
 
     // 새 Room ID 생성
     this.roomId = generateRoomId();
+    console.log('[Popup] 새 Room ID 생성됨:', this.roomId);
     this.elements.roomCodeSpan.textContent = this.roomId;
 
     // Firebase에 방 생성
     if (this.firebaseInitialized) {
+      console.log('[Popup] Firebase에 방 생성 시도...');
       try {
-        await window.BangselFirebase.createRoom(this.roomId);
-        console.log('Firebase 방 생성됨:', this.roomId);
+        var result = await window.BangselFirebase.createRoom(this.roomId);
+        console.log('[Popup] Firebase 방 생성 성공!', result);
       } catch (error) {
-        console.error('Firebase 방 생성 실패:', error);
+        console.error('[Popup] Firebase 방 생성 실패!');
+        console.error('[Popup] Error:', error);
         this.elements.qrcodeContainer.innerHTML =
           '<div style="text-align: center; padding: 20px; color: #ef4444;">' +
           '<p>서버 연결 실패</p>' +
-          '<p>인터넷 연결을 확인하세요</p>' +
+          '<p>오류: ' + (error.message || error) + '</p>' +
           '</div>';
         return;
       }
+    } else {
+      console.warn('[Popup] Firebase가 초기화되지 않아 방 생성을 건너뜀');
     }
 
     this.generateQRCode();
     this.showWaitingSection();
+    console.log('[Popup] createNewSession 완료');
   };
 
   PopupApp.prototype.generateQRCode = function() {
