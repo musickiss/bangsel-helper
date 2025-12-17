@@ -266,16 +266,18 @@ class MobileApp {
 
   /**
    * 연결 상태 변경 핸들러
+   * WebRTC P2P 실패해도 Firebase로 전송 가능하므로 연결 유지
    */
   onConnectionStatusChange(status) {
-    console.log('Connection status:', status);
+    console.log('[Mobile] Connection status:', status);
 
-    if (status === 'disconnected' || status === 'failed') {
-      this.showSection('connect');
-      if (this.sender) {
-        this.sender = null;
-      }
+    // 'disconnected'만 처리 (사용자가 명시적으로 연결 해제한 경우)
+    // 'failed'는 WebRTC P2P 실패를 의미하지만, Firebase로 전송 가능하므로 무시
+    if (status === 'disconnected') {
+      // 연결 해제 시에만 상태 초기화
+      // (사용자가 disconnect() 호출한 경우)
     }
+    // WebRTC 'failed' 상태는 무시 - Firebase로 계속 전송 가능
   }
 
   /**
@@ -384,10 +386,10 @@ class MobileApp {
   }
 
   /**
-   * 사진 전송
+   * 사진 전송 (Firebase를 통해 전송)
    */
   async sendPhotos() {
-    if (!this.sender || !this.sender.isConnected) {
+    if (!this.sender) {
       alert('PC와 연결되지 않았습니다.');
       return;
     }

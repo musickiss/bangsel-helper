@@ -28,13 +28,13 @@ class PhotoSender {
   }
 
   /**
-   * PC에 연결
+   * PC에 연결 (Firebase 기반 사진 전송 - WebRTC는 백그라운드에서 시도)
    */
   async connect() {
     try {
       this.onStatusChange('connecting');
 
-      // RTCPeerConnection 생성
+      // RTCPeerConnection 생성 (WebRTC는 백그라운드에서 시도)
       this.pc = new RTCPeerConnection(this.iceServers);
 
       // 데이터 채널 생성 (송신측에서 생성)
@@ -43,22 +43,17 @@ class PhotoSender {
       });
       this.dataChannel.binaryType = 'arraybuffer';
 
-      // 데이터 채널 이벤트
+      // 데이터 채널 이벤트 (옵션 - P2P 연결 성공 시 로깅용)
       this.dataChannel.onopen = () => {
-        console.log('Data channel opened');
-        this.isConnected = true;
-        this.onStatusChange('connected');
+        console.log('[Sender] Data channel opened (P2P 연결 성공!)');
       };
 
       this.dataChannel.onclose = () => {
-        console.log('Data channel closed');
-        this.isConnected = false;
-        this.onStatusChange('disconnected');
+        console.log('[Sender] Data channel closed');
       };
 
       this.dataChannel.onerror = (error) => {
-        console.error('Data channel error:', error);
-        this.onStatusChange('failed');
+        console.error('[Sender] Data channel error:', error);
       };
 
       this.dataChannel.onmessage = (event) => {
@@ -72,12 +67,10 @@ class PhotoSender {
         }
       };
 
-      // 연결 상태 변화
+      // 연결 상태 변화 (로깅용)
       this.pc.onconnectionstatechange = () => {
-        console.log('Connection state:', this.pc.connectionState);
-        if (this.pc.connectionState === 'failed') {
-          this.onStatusChange('failed');
-        }
+        console.log('[Sender] WebRTC connection state:', this.pc.connectionState);
+        // P2P 실패해도 Firebase로 전송 가능하므로 상태 변경 안함
       };
 
       // Offer 생성 및 전송
@@ -85,12 +78,17 @@ class PhotoSender {
       await this.pc.setLocalDescription(offer);
       await this.sendToSignaling('offer', offer);
 
-      // Answer 대기
+      // Answer 대기 (시그널링 완료)
       await this.listenToSignaling();
 
-      console.log('Connected to room:', this.roomId);
+      // 시그널링 완료 = 연결 성공 (Firebase로 전송 가능)
+      // WebRTC P2P 연결 성공 여부와 관계없이 사진 전송 가능
+      this.isConnected = true;
+      this.onStatusChange('connected');
+
+      console.log('[Sender] Connected to room:', this.roomId, '(Firebase 전송 준비 완료)');
     } catch (error) {
-      console.error('Connection failed:', error);
+      console.error('[Sender] Connection failed:', error);
       this.onStatusChange('failed');
       throw error;
     }
@@ -115,58 +113,99 @@ class PhotoSender {
   }
 
   /**
-   * 사진 전송
+   * 사진 전송 (Firebase Realtime Database 사용)
    * @param {File} file - 전송할 파일
    * @param {Function} onProgress - 진행률 콜백 (0-100)
    */
   async sendPhoto(file, onProgress) {
-    console.log('[Sender] sendPhoto 호출');
-    console.log('[Sender] dataChannel 존재:', !!this.dataChannel);
-    console.log('[Sender] dataChannel.readyState:', this.dataChannel?.readyState);
-    console.log('[Sender] isConnected:', this.isConnected);
+    console.log('[Sender] sendPhoto 호출 (Firebase 전송)');
+    console.log('[Sender] roomId:', this.roomId);
 
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.error('[Sender] DataChannel이 열려있지 않음!');
-      throw new Error('연결되지 않았습니다 (DataChannel: ' + (this.dataChannel?.readyState || 'null') + ')');
+    // roomId만 있으면 Firebase로 전송 가능
+    if (!this.roomId) {
+      throw new Error('방에 연결되지 않았습니다');
     }
 
-    const CHUNK_SIZE = 16384; // 16KB
-    const buffer = await file.arrayBuffer();
-    const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
+    console.log(`[Sender] 파일 전송 시작: ${file.name} (${file.size} bytes)`);
 
-    console.log(`[Sender] 파일 전송 시작: ${file.name} (${file.size} bytes, ${totalChunks} chunks)`);
+    // 파일을 Base64로 인코딩
+    onProgress?.(10);
+    const base64Data = await this.fileToBase64(file);
+    onProgress?.(30);
 
-    // 파일 시작 알림
-    this.dataChannel.send(JSON.stringify({
-      type: 'file-start',
-      name: file.name,
-      mimeType: file.type || 'image/jpeg',
-      size: file.size,
-      totalChunks
-    }));
+    console.log(`[Sender] Base64 인코딩 완료, 크기: ${base64Data.length} chars`);
 
-    // 청크 단위로 전송
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, buffer.byteLength);
-      const chunk = buffer.slice(start, end);
+    // Firebase에 사진 데이터 저장
+    const photoId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    const photoRef = firebase.database().ref(`rooms/${this.roomId}/photos/${photoId}`);
 
-      // 버퍼가 가득 차면 대기
-      while (this.dataChannel.bufferedAmount > 65535) {
-        await this.waitForBuffer();
+    try {
+      // 사진 데이터가 크면 청크로 나누어 저장 (Firebase 단일 쓰기 제한 대응)
+      const MAX_CHUNK_SIZE = 500000; // 500KB per chunk (Firebase 권장)
+
+      if (base64Data.length > MAX_CHUNK_SIZE) {
+        // 큰 파일은 청크로 나누어 저장
+        const totalChunks = Math.ceil(base64Data.length / MAX_CHUNK_SIZE);
+        console.log(`[Sender] 큰 파일 감지, ${totalChunks}개 청크로 분할`);
+
+        // 먼저 메타데이터 저장
+        await photoRef.set({
+          name: file.name,
+          mimeType: file.type || 'image/jpeg',
+          size: file.size,
+          totalChunks: totalChunks,
+          isChunked: true,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+        onProgress?.(40);
+
+        // 청크 데이터 저장
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * MAX_CHUNK_SIZE;
+          const end = Math.min(start + MAX_CHUNK_SIZE, base64Data.length);
+          const chunkData = base64Data.slice(start, end);
+
+          await firebase.database().ref(`rooms/${this.roomId}/photos/${photoId}/chunks/${i}`).set(chunkData);
+
+          const progress = 40 + ((i + 1) / totalChunks) * 60;
+          onProgress?.(progress);
+        }
+      } else {
+        // 작은 파일은 한 번에 저장
+        await photoRef.set({
+          name: file.name,
+          mimeType: file.type || 'image/jpeg',
+          size: file.size,
+          data: base64Data,
+          isChunked: false,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+        onProgress?.(100);
       }
 
-      this.dataChannel.send(chunk);
-
-      // 진행률 업데이트
-      const progress = ((i + 1) / totalChunks) * 100;
-      onProgress?.(progress);
+      console.log(`[Sender] Firebase에 사진 저장 완료: ${file.name}`);
+    } catch (error) {
+      console.error('[Sender] Firebase 저장 실패:', error);
+      throw new Error('사진 전송 실패: ' + error.message);
     }
+  }
 
-    // 파일 끝 알림
-    this.dataChannel.send(JSON.stringify({ type: 'file-end' }));
-
-    console.log(`File sent: ${file.name}`);
+  /**
+   * 파일을 Base64로 변환
+   * @param {File} file - 파일
+   * @returns {Promise<string>} Base64 문자열
+   */
+  fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // data:image/jpeg;base64, 부분 제거하고 순수 base64만 반환
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   /**

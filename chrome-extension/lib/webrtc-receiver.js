@@ -27,8 +27,9 @@
     this.pc = null;
     this.dataChannel = null;
     this.unsubscribeSignaling = null;
+    this.unsubscribePhotos = null; // Firebase 사진 리스너 해제 함수
 
-    // 파일 수신 상태
+    // 파일 수신 상태 (WebRTC 수신용 - 레거시)
     this.receivedChunks = [];
     this.currentFileInfo = null;
     this.totalReceivedSize = 0;
@@ -52,6 +53,9 @@
 
       // 리스닝 시작
       await this.startListening();
+
+      // Firebase 사진 리스너 시작
+      this.startPhotoListener();
 
       console.log('[Receiver] initialized with room:', this.roomId);
     } catch (error) {
@@ -81,13 +85,12 @@
         }
       };
 
-      // 연결 상태 변화 감지
+      // 연결 상태 변화 감지 (로깅용 - P2P 실패해도 Firebase로 수신 가능)
       this.pc.onconnectionstatechange = function() {
-        console.log('[Receiver] Connection state:', self.pc.connectionState);
-        self.onStatusChange(self.pc.connectionState);
-
-        if (self.pc.connectionState === 'failed') {
-          self.handleConnectionFailure();
+        console.log('[Receiver] WebRTC connection state:', self.pc.connectionState);
+        // P2P 연결 성공 시에만 connected 상태 알림
+        if (self.pc.connectionState === 'connected') {
+          console.log('[Receiver] P2P 연결 성공!');
         }
       };
 
@@ -106,11 +109,107 @@
       this.listenToSignaling();
       console.log('[Receiver] 시그널링 리스너 시작됨, sender 경로 대기 중...');
 
+      // Firebase 사진 리스너 시작
+      this.startPhotoListener();
+
     } catch (error) {
       console.error('[Receiver] startListening 실패:', error);
       this.onStatusChange('failed');
       throw error;
     }
+  };
+
+  /**
+   * Firebase 사진 리스너 시작 (Firebase를 통한 사진 수신)
+   */
+  PhotoReceiver.prototype.startPhotoListener = function() {
+    var self = this;
+    console.log('[Receiver] Firebase 사진 리스너 시작, 경로: rooms/' + this.roomId + '/photos');
+
+    var photosRef = window.BangselFirebase.getRef('rooms/' + this.roomId + '/photos');
+
+    this.unsubscribePhotos = function() {
+      photosRef.off('child_added');
+    };
+
+    photosRef.on('child_added', async function(snapshot) {
+      var photoData = snapshot.val();
+      var photoId = snapshot.key;
+
+      if (!photoData || !photoData.name) {
+        console.log('[Receiver] 유효하지 않은 사진 데이터, 무시');
+        return;
+      }
+
+      console.log('[Receiver] Firebase에서 사진 수신:', photoData.name);
+
+      // 연결 상태를 connected로 변경 (사진 수신 시)
+      self.onStatusChange('connected');
+
+      try {
+        var base64Data;
+
+        if (photoData.isChunked) {
+          // 청크로 나뉜 큰 파일 처리
+          console.log('[Receiver] 청크 파일 조립 중, 총 청크:', photoData.totalChunks);
+          var chunks = [];
+
+          for (var i = 0; i < photoData.totalChunks; i++) {
+            var chunkSnapshot = await window.BangselFirebase.getRef(
+              'rooms/' + self.roomId + '/photos/' + photoId + '/chunks/' + i
+            ).once('value');
+            chunks.push(chunkSnapshot.val());
+          }
+
+          base64Data = chunks.join('');
+        } else {
+          // 단일 데이터
+          base64Data = photoData.data;
+        }
+
+        // Base64를 Blob으로 변환
+        var blob = self.base64ToBlob(base64Data, photoData.mimeType || 'image/jpeg');
+
+        console.log('[Receiver] 사진 변환 완료:', photoData.name, '(' + blob.size + ' bytes)');
+
+        // 콜백 호출
+        self.onPhotoReceived({
+          name: photoData.name,
+          type: photoData.mimeType,
+          size: blob.size,
+          data: blob
+        });
+
+        // Firebase에서 사진 데이터 삭제 (수신 완료 후)
+        console.log('[Receiver] Firebase에서 사진 데이터 삭제:', photoId);
+        await window.BangselFirebase.getRef('rooms/' + self.roomId + '/photos/' + photoId).remove();
+
+      } catch (error) {
+        console.error('[Receiver] 사진 처리 실패:', error);
+      }
+    });
+  };
+
+  /**
+   * Base64를 Blob으로 변환
+   */
+  PhotoReceiver.prototype.base64ToBlob = function(base64, mimeType) {
+    var byteCharacters = atob(base64);
+    var byteArrays = [];
+
+    for (var offset = 0; offset < byteCharacters.length; offset += 512) {
+      var slice = byteCharacters.slice(offset, offset + 512);
+
+      var byteNumbers = new Array(slice.length);
+      for (var i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+
+      var byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
+    }
+
+    return new Blob(byteArrays, { type: mimeType });
   };
 
   /**
@@ -331,6 +430,12 @@
     if (this.unsubscribeSignaling) {
       this.unsubscribeSignaling();
       this.unsubscribeSignaling = null;
+    }
+
+    // Firebase 사진 리스너 해제
+    if (this.unsubscribePhotos) {
+      this.unsubscribePhotos();
+      this.unsubscribePhotos = null;
     }
 
     // 데이터 채널 닫기
