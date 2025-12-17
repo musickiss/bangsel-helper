@@ -130,18 +130,28 @@
 
     this.unsubscribePhotos = function() {
       photosRef.off('child_added');
+      photosRef.off('child_changed');
     };
 
-    photosRef.on('child_added', async function(snapshot) {
+    // 사진 처리 함수
+    var processPhoto = async function(snapshot) {
       var photoData = snapshot.val();
       var photoId = snapshot.key;
 
-      if (!photoData || !photoData.name) {
-        console.log('[Receiver] 유효하지 않은 사진 데이터, 무시');
+      console.log('[Receiver] 사진 데이터 수신:', photoId, photoData);
+
+      // ready 플래그가 없으면 아직 전송 중이므로 무시
+      if (!photoData || !photoData.ready) {
+        console.log('[Receiver] 아직 준비되지 않은 사진, 대기 중...');
         return;
       }
 
-      console.log('[Receiver] Firebase에서 사진 수신:', photoData.name);
+      if (!photoData.name) {
+        console.log('[Receiver] 유효하지 않은 사진 데이터 (name 없음), 무시');
+        return;
+      }
+
+      console.log('[Receiver] Firebase에서 사진 수신:', photoData.name, 'isChunked:', photoData.isChunked);
 
       // 연결 상태를 connected로 변경 (사진 수신 시)
       self.onStatusChange('connected');
@@ -158,13 +168,23 @@
             var chunkSnapshot = await window.BangselFirebase.getRef(
               'rooms/' + self.roomId + '/photos/' + photoId + '/chunks/' + i
             ).once('value');
-            chunks.push(chunkSnapshot.val());
+            var chunkData = chunkSnapshot.val();
+            console.log('[Receiver] 청크', i, '읽음, 크기:', chunkData ? chunkData.length : 'null');
+            chunks.push(chunkData || '');
           }
 
           base64Data = chunks.join('');
+          console.log('[Receiver] 청크 조립 완료, 총 크기:', base64Data.length, 'chars');
         } else {
           // 단일 데이터
           base64Data = photoData.data;
+          console.log('[Receiver] 단일 데이터 사용, 크기:', base64Data ? base64Data.length : 'null/undefined');
+        }
+
+        // Base64 데이터 검증
+        if (!base64Data || base64Data.length === 0) {
+          console.error('[Receiver] Base64 데이터가 비어있음!');
+          return;
         }
 
         // Base64를 Blob으로 변환
@@ -187,7 +207,13 @@
       } catch (error) {
         console.error('[Receiver] 사진 처리 실패:', error);
       }
-    });
+    };
+
+    // child_added: 새 사진 추가 시 (ready 플래그가 있으면 처리)
+    photosRef.on('child_added', processPhoto);
+
+    // child_changed: 청크 전송 완료 후 ready 플래그 추가 시
+    photosRef.on('child_changed', processPhoto);
   };
 
   /**

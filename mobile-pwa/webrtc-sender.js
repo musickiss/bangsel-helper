@@ -148,36 +148,41 @@ class PhotoSender {
         const totalChunks = Math.ceil(base64Data.length / MAX_CHUNK_SIZE);
         console.log(`[Sender] 큰 파일 감지, ${totalChunks}개 청크로 분할`);
 
-        // 먼저 메타데이터 저장
-        await photoRef.set({
-          name: file.name,
-          mimeType: file.type || 'image/jpeg',
-          size: file.size,
-          totalChunks: totalChunks,
-          isChunked: true,
-          timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-        onProgress?.(40);
-
-        // 청크 데이터 저장
+        // 먼저 청크 데이터 저장 (메타데이터보다 먼저!)
         for (let i = 0; i < totalChunks; i++) {
           const start = i * MAX_CHUNK_SIZE;
           const end = Math.min(start + MAX_CHUNK_SIZE, base64Data.length);
           const chunkData = base64Data.slice(start, end);
 
+          console.log(`[Sender] 청크 ${i + 1}/${totalChunks} 저장 중... (${chunkData.length} chars)`);
           await firebase.database().ref(`rooms/${this.roomId}/photos/${photoId}/chunks/${i}`).set(chunkData);
 
-          const progress = 40 + ((i + 1) / totalChunks) * 60;
+          const progress = 30 + ((i + 1) / totalChunks) * 60;
           onProgress?.(progress);
         }
+
+        // 마지막에 메타데이터 저장 (ready 플래그 포함)
+        // child_added는 이 시점에 발생하므로, 청크가 이미 저장된 상태
+        await photoRef.update({
+          name: file.name,
+          mimeType: file.type || 'image/jpeg',
+          size: file.size,
+          totalChunks: totalChunks,
+          isChunked: true,
+          ready: true,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+        onProgress?.(100);
       } else {
-        // 작은 파일은 한 번에 저장
+        // 작은 파일은 한 번에 저장 (data와 ready 플래그 포함)
+        console.log(`[Sender] 작은 파일, 한 번에 저장 (${base64Data.length} chars)`);
         await photoRef.set({
           name: file.name,
           mimeType: file.type || 'image/jpeg',
           size: file.size,
           data: base64Data,
           isChunked: false,
+          ready: true,
           timestamp: firebase.database.ServerValue.TIMESTAMP
         });
         onProgress?.(100);

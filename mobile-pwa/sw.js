@@ -2,7 +2,7 @@
  * Service Worker - PWA 오프라인 지원
  */
 
-const CACHE_NAME = 'bangsel-helper-v2';
+const CACHE_NAME = 'bangsel-helper-v3';
 
 // 캐시할 파일 목록
 const STATIC_ASSETS = [
